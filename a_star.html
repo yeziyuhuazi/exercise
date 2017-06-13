@@ -1,0 +1,313 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+        "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html" charset="utf-8">
+    <title>A* javascript</title>
+    <style type="text/css">
+        .map{ background-color: #CCCCCC; }
+        .map td{ width : 20px; height: 20px; }
+        .map_close{ background-color: #000000; }
+        .map_open{ background-color: #FFFFFF; }
+    </style>
+</head>
+<body>
+<!-- 	<input id='b_set' type='button' onclick='setBlock()' value='设置阻挡'/>
+	<input id='b_closed' type='button' onclick='showClosed()' value='closed'/>
+	<input id='b_open' type='button' onclick='showOpen()' value='open'/> -->
+</body>
+</html>
+<script type="text/javascript">
+
+var globalIndex = 1;
+var isSetBlock = false;
+var closedTable = [];
+
+var setBlock = function(){
+	isSetBlock = !isSetBlock;
+	if (isSetBlock){
+		document.getElementById('b_set').value = '运行';
+	}
+	else{
+		document.getElementById('b_set').value = '设置阻挡';
+	}
+}
+
+var showClosed = function(){
+	for (var i = 0; i < closedTable.length; i++){
+		if (closedTable[i].obj){
+			document.getElementById(closedTable[i].id).innerHTML="C:" + closedTable[i].obj.F.toFixed(1) + " " + closedTable[i].obj.G.toFixed(1) + " " + closedTable[i].obj.H.toString() + " " + closedTable[i].index;
+		}    		
+	}
+}
+
+var showOpen = function(){
+	map.showLeftOpenNode();
+}
+
+// 计时器
+var Timer = function (){
+	this.startTime = + new Date;
+};
+
+Timer.prototype.stop = function(){
+	return + new Date - this.startTime;
+};
+
+var map = {
+	gridWidth : 36,
+    gridHeight : 70,
+    isRun : false,
+    beginNode : null,
+    endNode : null,
+    openTable : [],
+    
+    _coordToID : function(x, y){
+    	return x + '_' + y;
+    },
+    
+    _IDToCoord : function(id){
+    	return id.split("_");
+    },
+    
+    Node : function(x, y) {
+        this.x = x;
+        this.y = y;
+        this.id = map._coordToID(x, y);
+        this.isRoadBlock = false;
+        this.front = null;
+        this.obj = null;
+        this.index = 0;		// 扩展索引，用于调试
+        this.place = 0;		// 1:在open表 2:在closed表
+    },
+    
+    init : function(blockFactor){
+        map.data = [];
+        for (var x = 0, _arr; x < map.gridWidth; x++) 
+        {
+            _arr = [];
+            for (var y = 0, mapNode; y < map.gridHeight; y++) 
+            {
+                mapNode = new map.Node(x, y);
+                
+                if (Math.random() < blockFactor) 
+                {
+                    mapNode.isRoadBlock = true;
+                };
+            
+                _arr.push(mapNode);
+            };
+            map.data.push(_arr);
+        };
+    },
+    
+    search : function(){
+    	while(1){
+    		if (map.openTable.length == 0){
+	    		break;
+	    	}
+            var _fMinNode = map.openTable.shift();
+            if (_fMinNode.place == 2){
+            	continue;
+            }
+            
+            map.searchAround(_fMinNode);
+            _fMinNode.index = globalIndex;
+            globalIndex++;
+            _fMinNode.place = 2;
+			closedTable.push(_fMinNode);
+            if (map.endNode == _fMinNode){
+            	break;
+            }
+        }
+    },
+    
+    searchAround : function(node){
+        var nodeX;
+        var nodeY;
+
+        for (var x = -1; x <= 1; x++) 
+        {
+            nodeX = node.x + x;
+            for (var y = -1, mapNode, _obj, tmpNode; y <= 1; y++) 
+            {
+                nodeY = node.y + y;
+                //剔除本身
+                if (x === 0 && y === 0) continue;
+                if (nodeX >= 0 && nodeY >= 0 && nodeX < map.gridWidth && nodeY < map.gridHeight) 
+                {
+                    mapNode = map.data[nodeX][nodeY];
+                    if (mapNode.isRoadBlock){
+                    	continue;
+                    }
+					_obj = map.getFGH(node, mapNode);
+					do
+					{
+						if (mapNode.place == 2){
+							if (_obj.G >= mapNode.obj.G){
+								break;
+							}
+						}
+						else if (mapNode.place == 1){
+							// 单调限制
+							if (mapNode.obj.G <= _obj.G){
+								continue;
+							}
+						}
+                        
+                        mapNode.obj = _obj;
+                        mapNode.front = node;
+                        mapNode.place = 1;
+                        map.insertOpenTable(mapNode);
+					}while(0)
+                };
+            };
+        };
+    },
+    
+    insertOpenTable : function(node){
+    	map.openTable[map.openTable.length] = node;
+    	for (var i = map.openTable.length - 1, tempNode; i > 0; i--){
+			if (map.openTable[i].obj.F < map.openTable[i - 1].obj.F){
+				tempNode = map.openTable[i];
+				map.openTable[i] = map.openTable[i - 1];
+				map.openTable[i - 1] = tempNode;
+			}
+			else{
+				break;
+			}
+    	}
+    },
+    
+    getFGH : function(centerNode, roundNode){
+    	var energyW = Math.abs(map.endNode.x - roundNode.x);
+        var energyH = Math.abs(map.endNode.y - roundNode.y);
+        var _H = energyW + energyH;
+        var _G = 1;
+        if (centerNode.x != roundNode.x && centerNode.y != roundNode.y){
+        	_G = 1.4;	
+        }
+        
+       _G = centerNode.obj.G + _G;
+        
+    	return { F : _G + _H, H : _H, G : _G };
+    },
+    
+    getNode : function(id){
+    	var coord = map._IDToCoord(id);
+    	return map.data[coord[0]][coord[1]];
+    },
+    
+    setBeginNode : function(){
+    	var energyW = Math.abs(map.endNode.x - map.beginNode.x);
+        var energyH = Math.abs(map.endNode.y - map.beginNode.y);
+        var _H = energyW + energyH;
+        var _G = 0;
+        var _F = _H;
+    	map.beginNode.obj = {F : _F, H : _H, G : _G};
+    	
+    	map.openTable.push(map.beginNode);
+    },
+    
+    /**  检测当前开启列表中是否含有传进来的Node 存在则从开启列表中选中将其返回*/
+    getOpenTableExitNode : function(node) {
+    	var openTable = map.openTable;
+        for (var i = 0, l = openTable.length; i < l; i++) {
+            if (openTable[i].id === node.id) return openTable[i];
+        };
+
+        return null;
+    },
+    
+     /**  绘制路线 */
+    drawRoad : function(node) {
+    	var tempNode = node;
+    	while (tempNode !== map.beginNode){
+    		document.getElementById(tempNode.id).style.background = '#EFA626';
+    		
+    		tempNode = tempNode.front;
+    	}
+    	
+    	document.getElementById(node.id).style.background = 'red';
+    },
+    
+    showLeftOpenNode : function(){
+    	for (var i = 0; i < map.openTable.length; i++) {
+            document.getElementById(map.openTable[i].id).innerHTML="O:" + map.openTable[i].obj.F.toFixed(1) + " " + map.openTable[i].obj.G.toFixed(1) + " " + map.openTable[i].obj.H;
+        };
+    },
+    
+    createUI : function(){
+    	var table = [];
+        var data = map.data;
+
+        table.push('<table cellpadding="0" cellspacing="1" bgcolor="0" class="map">');
+        table.push('<tbody>');
+        for (var y = 0, yl = data.length; y < yl; y++) 
+        {
+            table.push('<tr>');
+            for (var x = 0, xl = data[y].length; x < xl; x++) 
+            {
+                table.push('<td id="'+ data[y][x].id +'" class="'+ (data[y][x].isRoadBlock === true ? 'map_close' : 'map_open') +'"></td>')
+            }
+            table.push('</tr>');
+        };
+        table.push('</tbody>');
+        table.push('</table>');
+
+        var container = document.createElement('div');
+        container.innerHTML = table.join('');
+
+		document.getElementsByTagName('body')[0].appendChild(container);
+		
+	    container.onclick = function(event) 
+	    {
+	        event = event || window.event;
+	
+	        var target = event.target || event.srcElement;
+	
+	        if (map.isRun) return;
+	        if (target.nodeName !== "TD") return;
+	        
+	        var node = map.getNode(target.id);
+	        
+	        if (isSetBlock){
+	        	if (node.isRoadBlock){
+	        		node.isRoadBlock = false;
+	        		target.style.backgroundColor = 'rgb(255, 255, 255)';
+	        	}
+	        	else{
+	        		node.isRoadBlock = true;
+	        		target.style.backgroundColor = 'rgb(0, 0, 0)';
+	        	}
+	        	return;
+	        }
+		        
+	        if (node.isRoadBlock) return;
+	        if (!node) return;
+	        if (map.beginNode) 
+	        {
+	       		map.endNode = node;
+	       		var time = new Timer;
+	       		map.setBeginNode();
+	       		map.search();
+	       		document.title = '[' + time.stop() + '毫秒] ' + document.title;
+	       		map.drawRoad(map.endNode);
+	       		map.isRun = true;
+	       	} 
+	       	else
+	       	{
+	       		map.beginNode = node;
+	            target.style.backgroundColor = 'green';
+	       	};
+	    };
+    },
+};
+
+(function(){
+	map.init(0.3);
+	map.createUI();
+})();
+
+</script>
